@@ -61,7 +61,7 @@ class REAL_PT_snow(Panel):
         col = layout.column(align=True)
         col.prop(settings, 'coverage', slider=True)
         col.prop(settings, 'height')
-        layout.label(text="Select Original Form")
+        layout.label(text="Select Snow Type")
         layout.prop(context.scene, 'snow_type', expand=True) # create radio buttons for types of snow
 
         layout.use_property_split = True
@@ -320,27 +320,27 @@ def add_material(obj: bpy.types.Object, ice: int):
     
     
     if ice == 0: # powdery snow
-        print("powder")
         principled.inputs[5].default_value = 0.1 # specular
         principled.inputs[7].default_value = 1.0 # roughness, super soft
         principled.inputs[11].default_value = 0.0 # sheen tint
         principled.inputs[14].default_value = 1.450 # IOR
         principled.inputs[15].default_value = 0.0 # transmission
+        dis.inputs[2].default_value = 0.3 # displacement: scale
     elif ice == 1: # hard packed snow
-        print("hard packed")
         principled.inputs[5].default_value = 1.0 # specular
         principled.inputs[7].default_value = 0.0 # roughness, super rough
         principled.inputs[11].default_value = 0.0 # sheen tint
         principled.inputs[14].default_value = 1.450 # IOR
         principled.inputs[15].default_value = 0.25 # transmission
+        dis.inputs[2].default_value = 0.3 # displacement: scale
     else: # ice
-        print("ice")
         principled.inputs[5].default_value = 1.0 # specular
         principled.inputs[7].default_value = 0.35 # roughness, super soft
         principled.inputs[11].default_value = 0.5 # sheen tint
         principled.inputs[14].default_value = 1.250 # IOR
         principled.inputs[15].default_value = 1.0 # transmission
-    
+        dis.inputs[2].default_value = 0.15 # displacement: scale
+
     vec_math.operation = "MULTIPLY"
     vec_math.inputs[1].default_value[0] = 0.5
     vec_math.inputs[1].default_value[1] = 0.5
@@ -348,8 +348,7 @@ def add_material(obj: bpy.types.Object, ice: int):
     com_xyz.inputs[0].default_value = 0.36
     com_xyz.inputs[1].default_value = 0.46
     com_xyz.inputs[2].default_value = 0.6
-    dis.inputs[1].default_value = 0.1
-    dis.inputs[2].default_value = 0.3
+    dis.inputs[1].default_value = 0.1 # displacement: midlevel
     mul1.operation = "MULTIPLY"
     mul1.inputs[1].default_value = 0.1
     mul2.operation = "MULTIPLY"
@@ -415,7 +414,7 @@ class SnowSettings(PropertyGroup):
     height : FloatProperty(
         name = "Height",
         description = "Height of the snow",
-        default = 0.3,
+        default = 0.75,
         step = 1,
         precision = 2,
         min = 0.1,
@@ -425,12 +424,6 @@ class SnowSettings(PropertyGroup):
     vertices : BoolProperty(
         name = "Selected Faces",
         description = "Add snow only on selected faces",
-        default = False
-        )
-    
-    ice : BoolProperty(
-        name = "Ice",
-        description = "Turn the snow into ice",
         default = False
         )
 
