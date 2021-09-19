@@ -89,7 +89,7 @@ class SNOW_OT_Create(Operator):
         coverage = context.scene.snow.coverage
         height = context.scene.snow.height
         vertices = context.scene.snow.vertices
-        ice = context.scene.snow_type # ice
+        snow_type = context.scene.snow_type # ice
 
         # get list of selected objects except non-mesh objects
         input_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
@@ -120,7 +120,7 @@ class SNOW_OT_Create(Operator):
             bm_copy.normal_update()
             # get faces data
             delete_faces(vertices, bm_copy, snow_object)
-            ballobj = add_metaballs(context, height, int(ice), snow_object)
+            ballobj = add_metaballs(context, height, int(snow_type), snow_object)
             context.view_layer.objects.active = snow_object
             surface_area = area(snow_object)
             snow = add_particles(context, surface_area, height, coverage, snow_object, ballobj)
@@ -134,7 +134,7 @@ class SNOW_OT_Create(Operator):
                 coll = bpy.data.collections["Snow"]
             coll.objects.link(snow)
             context.view_layer.layer_collection.collection.objects.unlink(snow)
-            add_material(snow, int(ice))
+            add_material(snow, int(snow_type))
             # parent with object
             snow.parent = obj
             snow.matrix_parent_inverse = obj.matrix_world.inverted()
@@ -192,7 +192,7 @@ def add_particles(context, surface_area: float, height: float, coverage: float, 
     return snow
 
 
-def add_metaballs(context, height: float, ice: int, snow_object: bpy.types.Object) -> bpy.types.Object:
+def add_metaballs(context, height: float, snow_type: int, snow_object: bpy.types.Object) -> bpy.types.Object:
     ball_name = "SnowBall"
     ball = bpy.data.metaballs.new(ball_name)
     ballobj = bpy.data.objects.new(ball_name, ball)
@@ -201,12 +201,12 @@ def add_metaballs(context, height: float, ice: int, snow_object: bpy.types.Objec
     ball.resolution = 0.7*height+0.3
     ball.threshold = 1.3
     element = ball.elements.new()
-    if ice == 1: # hard packed snow
-        element.radius = 1.15
-        element.stiffness = 2.0 # high value means it will be more chunky since the metas need to be close to each other to begin merging; a low value means it will be more free-flowing; stiffness must be greater than threshold
-    elif ice == 2: # ice:
-        element.radius = 0.85
-        element.stiffness = 4.0
+    if snow_type == 1: # hard packed snow
+        element.radius = 1.35
+        element.stiffness = 1.25 # high value means it will be more chunky since the metas need to be close to each other to begin merging; a low value means it will be more free-flowing; stiffness must be greater than threshold
+    elif snow_type == 2: # ice:
+        element.radius = 1.2
+        element.stiffness = 3.0
     else: # powdery snow
         element.radius = 1.5
         element.stiffness = 0.75 # high value means it will be more chunky since the metas need to be close to each other to begin merging; a low value means it will be more free-flowing; stiffness must be greater than threshold
@@ -246,7 +246,7 @@ def area(obj: bpy.types.Object) -> float:
     return area
 
 
-def add_material(obj: bpy.types.Object, ice: int):
+def add_material(obj: bpy.types.Object, snow_type: int):
     # add PBR snow material
     mat_name = "Snow"
     # if material doesn't exist, create it
@@ -319,14 +319,14 @@ def add_material(obj: bpy.types.Object, ice: int):
     principled.inputs[13].default_value = 0.100
     
     
-    if ice == 0: # powdery snow
+    if snow_type == 0: # powdery snow
         principled.inputs[5].default_value = 0.1 # specular
         principled.inputs[7].default_value = 1.0 # roughness, super soft
         principled.inputs[11].default_value = 0.0 # sheen tint
         principled.inputs[14].default_value = 1.450 # IOR
         principled.inputs[15].default_value = 0.0 # transmission
         dis.inputs[2].default_value = 0.3 # displacement: scale
-    elif ice == 1: # hard packed snow
+    elif snow_type == 1: # hard packed snow
         principled.inputs[5].default_value = 1.0 # specular
         principled.inputs[7].default_value = 0.0 # roughness, super rough
         principled.inputs[11].default_value = 0.0 # sheen tint
