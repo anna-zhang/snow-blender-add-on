@@ -42,14 +42,16 @@ from bpy.props import BoolProperty, FloatProperty, IntProperty, PointerProperty
 from bpy.types import Operator, Panel, PropertyGroup
 from mathutils import Vector
 
+snow_options = (('0','Powdery Snow',''),('1','Hard Packed Snow',''),('2','Ice','')) # 0 for Powdery Snow, 1 for Hard Packed Snow, 2 for Ice
+bpy.types.Scene.snow_type = bpy.props.EnumProperty(items = snow_options)
 
 # Panel
 class REAL_PT_snow(Panel):
     bl_space_type = "VIEW_3D"
     bl_context = "objectmode"
     bl_region_type = "UI"
-    bl_label = "Snow"
-    bl_category = "Real Snow"
+    bl_label = "Snow (Modified)"
+    bl_category = "Real Snow (Modified)"
 
     def draw(self, context):
         scn = context.scene
@@ -59,6 +61,8 @@ class REAL_PT_snow(Panel):
         col = layout.column(align=True)
         col.prop(settings, 'coverage', slider=True)
         col.prop(settings, 'height')
+        layout.label(text="Select Original Form")
+        layout.prop(context.scene, 'snow_type', expand=True) # create radio buttons for types of snow
 
         layout.use_property_split = True
         layout.use_property_decorate = False
@@ -85,6 +89,7 @@ class SNOW_OT_Create(Operator):
         coverage = context.scene.snow.coverage
         height = context.scene.snow.height
         vertices = context.scene.snow.vertices
+        ice = context.scene.snow_type # ice
 
         # get list of selected objects except non-mesh objects
         input_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
@@ -115,12 +120,12 @@ class SNOW_OT_Create(Operator):
             bm_copy.normal_update()
             # get faces data
             delete_faces(vertices, bm_copy, snow_object)
-            ballobj = add_metaballs(context, height, snow_object)
+            ballobj = add_metaballs(context, height, int(ice), snow_object)
             context.view_layer.objects.active = snow_object
             surface_area = area(snow_object)
             snow = add_particles(context, surface_area, height, coverage, snow_object, ballobj)
             add_modifiers(snow)
-            # place inside collection
+            # place inside collection titled "Snow," create collection if it does not yet exist
             context.view_layer.active_layer_collection = context.view_layer.layer_collection
             if "Snow" not in context.scene.collection.children:
                 coll = bpy.data.collections.new("Snow")
@@ -129,7 +134,7 @@ class SNOW_OT_Create(Operator):
                 coll = bpy.data.collections["Snow"]
             coll.objects.link(snow)
             context.view_layer.layer_collection.collection.objects.unlink(snow)
-            add_material(snow)
+            add_material(snow, int(ice))
             # parent with object
             snow.parent = obj
             snow.matrix_parent_inverse = obj.matrix_world.inverted()
@@ -187,7 +192,7 @@ def add_particles(context, surface_area: float, height: float, coverage: float, 
     return snow
 
 
-def add_metaballs(context, height: float, snow_object: bpy.types.Object) -> bpy.types.Object:
+def add_metaballs(context, height: float, ice: int, snow_object: bpy.types.Object) -> bpy.types.Object:
     ball_name = "SnowBall"
     ball = bpy.data.metaballs.new(ball_name)
     ballobj = bpy.data.objects.new(ball_name, ball)
@@ -196,8 +201,15 @@ def add_metaballs(context, height: float, snow_object: bpy.types.Object) -> bpy.
     ball.resolution = 0.7*height+0.3
     ball.threshold = 1.3
     element = ball.elements.new()
-    element.radius = 1.5
-    element.stiffness = 0.75
+    if ice == 1: # hard packed snow
+        element.radius = 1.15
+        element.stiffness = 2.0 # high value means it will be more chunky since the metas need to be close to each other to begin merging; a low value means it will be more free-flowing; stiffness must be greater than threshold
+    elif ice == 2: # ice:
+        element.radius = 0.85
+        element.stiffness = 4.0
+    else: # powdery snow
+        element.radius = 1.5
+        element.stiffness = 0.75 # high value means it will be more chunky since the metas need to be close to each other to begin merging; a low value means it will be more free-flowing; stiffness must be greater than threshold
     ballobj.scale = [0.09, 0.09, 0.09]
     return ballobj
 
@@ -234,7 +246,8 @@ def area(obj: bpy.types.Object) -> float:
     return area
 
 
-def add_material(obj: bpy.types.Object):
+def add_material(obj: bpy.types.Object, ice: int):
+    # add PBR snow material
     mat_name = "Snow"
     # if material doesn't exist, create it
     if mat_name in bpy.data.materials:
@@ -245,26 +258,26 @@ def add_material(obj: bpy.types.Object):
     # delete all nodes
     for node in nodes:
 	    nodes.remove(node)
-    # add nodes
-    output = nodes.new('ShaderNodeOutputMaterial')
-    principled = nodes.new('ShaderNodeBsdfPrincipled')
-    vec_math = nodes.new('ShaderNodeVectorMath')
-    com_xyz = nodes.new('ShaderNodeCombineXYZ')
-    dis = nodes.new('ShaderNodeDisplacement')
-    mul1 = nodes.new('ShaderNodeMath')
-    add1 = nodes.new('ShaderNodeMath')
-    add2 = nodes.new('ShaderNodeMath')
-    mul2 = nodes.new('ShaderNodeMath')
-    mul3 = nodes.new('ShaderNodeMath')
-    ramp1 = nodes.new('ShaderNodeValToRGB')
-    ramp2 = nodes.new('ShaderNodeValToRGB')
-    ramp3 = nodes.new('ShaderNodeValToRGB')
-    vor = nodes.new('ShaderNodeTexVoronoi')
-    noise1 = nodes.new('ShaderNodeTexNoise')
-    noise2 = nodes.new('ShaderNodeTexNoise')
-    noise3 = nodes.new('ShaderNodeTexNoise')
-    mapping = nodes.new('ShaderNodeMapping')
-    coord = nodes.new('ShaderNodeTexCoord')
+    # add nodes for shader
+    output = nodes.new('ShaderNodeOutputMaterial') # material output
+    principled = nodes.new('ShaderNodeBsdfPrincipled') # principled bsdf
+    vec_math = nodes.new('ShaderNodeVectorMath') # multiply
+    com_xyz = nodes.new('ShaderNodeCombineXYZ') # combine xyz
+    dis = nodes.new('ShaderNodeDisplacement') # displacement
+    mul1 = nodes.new('ShaderNodeMath') # multiply 1
+    add1 = nodes.new('ShaderNodeMath') # add 1
+    add2 = nodes.new('ShaderNodeMath') # add 2
+    mul2 = nodes.new('ShaderNodeMath') # multiply 2
+    mul3 = nodes.new('ShaderNodeMath') # multiply 3
+    ramp1 = nodes.new('ShaderNodeValToRGB') # colorramp 1
+    ramp2 = nodes.new('ShaderNodeValToRGB') # colorramp 2
+    ramp3 = nodes.new('ShaderNodeValToRGB') # colorramp 3
+    vor = nodes.new('ShaderNodeTexVoronoi') # voronoi texture
+    noise1 = nodes.new('ShaderNodeTexNoise') # noise texture 1
+    noise2 = nodes.new('ShaderNodeTexNoise') # noise texture 2
+    noise3 = nodes.new('ShaderNodeTexNoise') # noise texture 3
+    mapping = nodes.new('ShaderNodeMapping') # mapping
+    coord = nodes.new('ShaderNodeTexCoord') # texture coordinate
     # change location
     output.location = (100, 0)
     principled.location = (-200, 500)
@@ -288,19 +301,46 @@ def add_material(obj: bpy.types.Object):
     # change node parameters
     principled.distribution = "MULTI_GGX"
     principled.subsurface_method = "RANDOM_WALK"
+    # base color
     principled.inputs[0].default_value[0] = 0.904
     principled.inputs[0].default_value[1] = 0.904
     principled.inputs[0].default_value[2] = 0.904
+    # subsurface
     principled.inputs[1].default_value = 1
-    principled.inputs[2].default_value[0] = 0.36
-    principled.inputs[2].default_value[1] = 0.46
-    principled.inputs[2].default_value[2] = 0.6
+    # combine XYZ's x, y, z values
+    principled.inputs[2].default_value[0] = 0.36 # x value
+    principled.inputs[2].default_value[1] = 0.46 # y value
+    principled.inputs[2].default_value[2] = 0.6 # z value
+    # subsurface color: white for snow
     principled.inputs[3].default_value[0] = 0.904
     principled.inputs[3].default_value[1] = 0.904
     principled.inputs[3].default_value[2] = 0.904
-    principled.inputs[5].default_value = 0.224
-    principled.inputs[7].default_value = 0.1
-    principled.inputs[13].default_value = 0.1
+    # clearcoat roughness
+    principled.inputs[13].default_value = 0.100
+    
+    
+    if ice == 0: # powdery snow
+        print("powder")
+        principled.inputs[5].default_value = 0.1 # specular
+        principled.inputs[7].default_value = 1.0 # roughness, super soft
+        principled.inputs[11].default_value = 0.0 # sheen tint
+        principled.inputs[14].default_value = 1.450 # IOR
+        principled.inputs[15].default_value = 0.0 # transmission
+    elif ice == 1: # hard packed snow
+        print("hard packed")
+        principled.inputs[5].default_value = 1.0 # specular
+        principled.inputs[7].default_value = 0.0 # roughness, super rough
+        principled.inputs[11].default_value = 0.0 # sheen tint
+        principled.inputs[14].default_value = 1.450 # IOR
+        principled.inputs[15].default_value = 0.25 # transmission
+    else: # ice
+        print("ice")
+        principled.inputs[5].default_value = 1.0 # specular
+        principled.inputs[7].default_value = 0.35 # roughness, super soft
+        principled.inputs[11].default_value = 0.5 # sheen tint
+        principled.inputs[14].default_value = 1.250 # IOR
+        principled.inputs[15].default_value = 1.0 # transmission
+    
     vec_math.operation = "MULTIPLY"
     vec_math.inputs[1].default_value[0] = 0.5
     vec_math.inputs[1].default_value[1] = 0.5
@@ -362,6 +402,7 @@ def add_material(obj: bpy.types.Object):
 
 # Properties
 class SnowSettings(PropertyGroup):
+    # user-inputted values
     coverage : IntProperty(
         name = "Coverage",
         description = "Percentage of the object to be covered with snow",
@@ -384,6 +425,12 @@ class SnowSettings(PropertyGroup):
     vertices : BoolProperty(
         name = "Selected Faces",
         description = "Add snow only on selected faces",
+        default = False
+        )
+    
+    ice : BoolProperty(
+        name = "Ice",
+        description = "Turn the snow into ice",
         default = False
         )
 
